@@ -1,0 +1,7 @@
+*.fasta
+*.log
+__pycache__/
+*.pyc
+results/
+test_results/
+.env
