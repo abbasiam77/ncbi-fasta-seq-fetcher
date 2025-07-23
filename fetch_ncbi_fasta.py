@@ -3,11 +3,10 @@
 Fetch protein FASTA sequences from NCBI Entrez for a gene (or protein) of interest in one or more species.
 
 Usage:
-  python fetch_ncbi_fasta.py <gene> <species1> [<species2> ...] <number> <outfile_base> [--api-key API_KEY] [--outdir OUTDIR] [--all-fields]
+  python fetch_ncbi_fasta.py <gene> <species1> [<species2> ...] <number> <outfile_base> [--api-key API_KEY] [--outdir OUTDIR] [--all-fields] [--longest]
 
 Example:
-  python fetch_ncbi_fasta.py GLI3 "Homo sapiens" "Mus musculus" 10 GLI3_Seqs
-  python fetch_ncbi_fasta.py "nsp1" "Severe acute respiratory syndrome coronavirus 2" 5 NSP1_Seqs --all-fields
+  python fetch_ncbi_fasta.py GLI3 "Homo sapiens" "Mus musculus" 10 GLI3_Seqs --longest
 """
 
 import requests
@@ -15,7 +14,21 @@ import os
 import argparse
 import sys
 
-def fetch_proteins(gene, species, n, outfile_base, outdir=".", api_key=None, all_fields=False):
+def parse_fasta(fasta):
+    """Yield (header, sequence) tuples from a multi-FASTA string."""
+    header, seq = None, []
+    for line in fasta.splitlines():
+        if line.startswith(">"):
+            if header:
+                yield (header, ''.join(seq))
+            header = line
+            seq = []
+        else:
+            seq.append(line.strip())
+    if header:
+        yield (header, ''.join(seq))
+
+def fetch_proteins(gene, species, n, outfile_base, outdir=".", api_key=None, all_fields=False, longest=False):
     # Build the search term
     if all_fields:
         term = f"{gene} AND {species}[Organism]"
@@ -65,6 +78,18 @@ def fetch_proteins(gene, species, n, outfile_base, outdir=".", api_key=None, all
         print(f"Error during sequence retrieval: {e}")
         return
 
+    # If --longest is set, keep only the longest sequence
+    if longest:
+        seqs = list(parse_fasta(fasta))
+        if not seqs:
+            print("No sequences fetched.")
+            return
+        # Find the longest sequence
+        header, seq = max(seqs, key=lambda x: len(x[1]))
+        fasta = f"{header}\n"
+        # Split long sequence into lines of 60 chars (standard FASTA format)
+        fasta += '\n'.join([seq[i:i+60] for i in range(0, len(seq), 60)])
+
     # Build unique output filename
     safe_species = species.replace(" ", "_")
     if not os.path.isdir(outdir):
@@ -78,7 +103,10 @@ def fetch_proteins(gene, species, n, outfile_base, outdir=".", api_key=None, all
     # Write to output file
     with open(outfile, "w") as out:
         out.write(fasta)
-    print(f"Downloaded {len(ids)} protein FASTA sequences to {outfile}")
+    if longest:
+        print(f"Downloaded longest protein FASTA sequence to {outfile}")
+    else:
+        print(f"Downloaded {len(ids)} protein FASTA sequences to {outfile}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fetch protein FASTA sequences from NCBI Entrez for a gene or protein of interest in one or more species.")
@@ -89,15 +117,15 @@ if __name__ == "__main__":
     parser.add_argument("--api-key", help="NCBI API key (optional, speeds up large queries)")
     parser.add_argument("--outdir", default=".", help="Output directory (default: current)")
     parser.add_argument("--all-fields", action="store_true", help="Search all fields (not just gene name, for viral proteins etc.)")
+    parser.add_argument("--longest", action="store_true", help="Download only the single longest protein isoform (wild type)")
     args = parser.parse_args()
 
     gene = args.gene
     n = args.number
     outfile_base = args.outfile_base
-    # "species" may include extra arguments; real species list is up to -2 position
     if len(args.species) > 2:
         species_list = args.species[:-2]
     else:
         species_list = args.species
     for species in species_list:
-        fetch_proteins(gene, species, n, outfile_base, args.outdir, args.api_key, args.all_fields)
+        fetch_proteins(gene, species, n, outfile_base, args.outdir, args.api_key, args.all_fields, args.longest)
