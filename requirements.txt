@@ -1,1 +1,4 @@
-requests
+# Python dependencies for NCBI FASTA Protein Sequence Fetcher
+requests>=2.0
+
+# (Tested on Python 3.7+)
