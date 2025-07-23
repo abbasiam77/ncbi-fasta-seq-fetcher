@@ -1,7 +1,12 @@
+# Ignore all FASTA files and logs
 *.fasta
 *.log
+
+# Ignore Python cache and environment files
 __pycache__/
 *.pyc
+.env
+
+# Ignore typical results/output folders
 results/
 test_results/
-.env
